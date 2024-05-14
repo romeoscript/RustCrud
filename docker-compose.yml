@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  rustapp:
+    container_name: rustapp
+    image: romeoscript/rustapp:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_URL: postgres://postgres:bourne24k@db:5432/rustapp
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+  db:
+    container_name: db
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: bourne24k
+      POSTGRES_DB: rustapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata: {}

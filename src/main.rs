@@ -102,6 +102,54 @@ fn handle_get_request(request: &str) -> (&str, String){
     }
 }
 
+
+fn handle_get_all_request(request: &str) -> (&str, String){
+    match Client::connect(DB_URL, NOT1s){
+        Ok(mut client) => {
+                    let mut users = Vec::new();
+
+                    for row in client.query ("SELECT * FROM users", &[]).unwrap(){
+                        users.push(User{
+                            id: row.get(0),
+                            name: row.get(1),
+                            email: row.get(2),
+                        });
+                    }
+                    (OK_RESPONSE, serde_json::to_string(&users).unwrap())
+                }
+        _ => (INternal_SERVER_ERROR, "Internal Server Error".to_string()),
+    }
+}
+ fn handle_put_request(request: &str) -> (&str, String){
+     match (
+        get_id(&request).parse::<i32>,
+        get_user_request_body(&request), 
+        Client::connect(DB_URL, NOT1s),
+    ){ 
+         (Ok(id), Ok(user), Ok(mut client)) => {
+              client.execute("UPDATE users SET name = $1, email = $2 WHERE id = $3", &[&user.name, &user.email, &id]
+            ).unwrap()
+            
+               (OK_RESPONSE.to_string(), "User updated".to_string()),  
+         }
+         _ => (INternal_SERVER_ERROR, "Internal Server Error".to_string()),
+     }
+ }
+
+ fn handle_delete_request(request: &str) -> (&str, String){
+     match (get_id(&request).parse::<i32>, Client::connect(DB_URL, NOT1s)){
+         (Ok(id), Ok(mut client)) => {
+             let rows_affect =  client.execute("DELETE FROM users WHERE id = $1", &[&id]).unwrap()
+                if rows_affect == 0 {
+                    return (Not_FOUND, "User not found".to_string());
+                }
+                  (OK_RESPONSE.to_string(), "User deleted".to_string()),
+             
+         }
+         _ => (INternal_SERVER_ERROR, "Internal Server Error".to_string()),
+     }
+ }
+
 fn set_database() -> Result<(), PosgresError>{
     let mut client = Client::connect(DB_URL, NOT1s)?;
     client.batch_execute("
