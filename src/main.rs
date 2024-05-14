@@ -31,6 +31,75 @@ fn main(){
     }
     let listener = TcpListener::bind(format!(0.0.0.0:8080)).unwrap();
     println("Server listening on port 8080");
+
+    for stream in listener.incoming(){
+        match stream{
+            Ok(mut stream) => {
+                handle_connection(&mut stream);
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+            }
+        }
+    } 
+}
+
+fn handle_client(mut stream: TcpStream){
+    let mut buffer = [0; 1024];
+    let mut request = String::new();
+
+    match stream.read(&mut buffer){
+        Ok(size) => {
+            request.push_str(&String::from_utf8_lossy(&buffer[..size].as_ref()));
+
+            let (status_line, content) = match &*request{
+                r if request_with("POST /users") => handle_post_request(r),
+                r if request_with("GET /users") => handle_get_request(r),
+                r if request_with("GET /users") => handle_get_all_request(r),
+                r if request_with("PUT /users") => handle_put_request(r),
+                r if request_with("DELETE /users") => handle_delete_request(r),
+                _ = (Not_FOUND, "Not Found".to_string()),
+            }
+            stream.write_all(format! ("{}{}",status_line, content).as_bytes()).unwrap();
+        }
+        
+        Err(e) => {
+            println!("Error reading from connection: {}", e);
+            return;
+        }
+    }
+   
+}
+
+fn handle_post_request(request: &str) -> (&str, String){
+    match (get_user_request_body(&request), Client::connect(DB_URL, NOT1s)){
+        (Ok(user), Ok(mut client)) => {
+            match client.execute(
+                "INSERT INTO users (name, email) VALUES ($1, $2)",
+                &[&user.name, &user.email]
+            ).unwrap();
+            (OK_RESPONSE, "User created".to_string())
+        }
+        _ =>  (INternal_SERVER_ERROR, "Internal Server Error".to_string()),
+    }
+}
+
+fn handle_get_request(request: &str) -> (&str, String){
+    match (get_id(&request).parse::<i32>, Client::connect(DB_URL, NOT1s)){
+        (id, Ok(mut client)) => {
+            match client.query("SELECT * FROM users WHERE id = $1", &[&id]){
+                Ok(row) => {
+                   let user = User{
+                       id: row.get(0),
+                       name: row.get(1),
+                       email: row.get(2),
+                   };
+                }
+               (OK_RESPONSE.to_string(), serde_json::to_string(&user).unwrap())
+            }
+        }
+        _ => (INternal_SERVER_ERROR, "User not found".to_string()),
+    }
 }
 
 fn set_database() -> Result<(), PosgresError>{
@@ -43,4 +112,15 @@ fn set_database() -> Result<(), PosgresError>{
         )
     ")?;
     Ok(())
+}
+
+fn get_id(request:&str)-> &str {
+    request.split("/").nth(1).unwrap_or_default().split_whitespace().next().unwrap_or_default()  
+}
+
+
+//desrialize user from request body twith the id 
+fn get_user_request_body(request: &str) -> Result<User, serde_json::Error>{
+    let body = request.split("\r\n\r\n").nth(1).unwrap_or_default();
+    serde_json::from_str(body)
 }
